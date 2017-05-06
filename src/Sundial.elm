@@ -1,5 +1,6 @@
 module Sundial exposing (..)
 
+import Sundial.Entry as Entry exposing (..)
 import Date exposing (Date)
 import Html exposing (..)
 import Html.Attributes exposing (..)
@@ -24,26 +25,16 @@ main =
 
 
 type alias Model =
-    { running : Bool
-    , currentEntry : Entry
-    , storedEntries : List Entry
-    }
-
-
-type alias Entry =
     { description : String
+    , duration : Time
     , startDate : Maybe Date
-    , endDate : Maybe Date
+    , storedEntries : List Entry
     }
 
 
 init : ( Model, Cmd Msg )
 init =
-    let
-        entry =
-            Entry "" Nothing Nothing
-    in
-        ( Model False entry [], Cmd.none )
+    ( Model "" 0 Nothing [], Cmd.none )
 
 
 
@@ -54,7 +45,7 @@ type Msg
     = ToggleTimer
     | SetDescription String
     | StartTimer Date
-    | StopTimer Date
+    | StopTimer Date Date
     | Tick Time
 
 
@@ -62,68 +53,40 @@ update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         ToggleTimer ->
-            if model.running then
-                ( model, Task.perform StopTimer Date.now )
-            else
-                ( model, Task.perform StartTimer Date.now )
+            case model.startDate of
+                Just startDate ->
+                    ( model, Task.perform (StopTimer startDate) Date.now )
+
+                Nothing ->
+                    ( model, Task.perform StartTimer Date.now )
 
         SetDescription newDescription ->
-            let
-                newCurrentEntry =
-                    Entry
-                        newDescription
-                        model.currentEntry.startDate
-                        model.currentEntry.endDate
-            in
-                ( { model | currentEntry = newCurrentEntry }, Cmd.none )
+            ( { model | description = newDescription }, Cmd.none )
 
         StartTimer startDate_ ->
+            ( { model | startDate = Just startDate_ }, Cmd.none )
+
+        StopTimer startDate endDate ->
             let
-                newCurrentEntry =
-                    Entry model.currentEntry.description (Just startDate_) Nothing
+                newDateRangeEntry =
+                    DateRangeEntry
+                        (DateRangeEntryInfo
+                            model.description
+                            startDate
+                            endDate
+                        )
             in
                 ( { model
-                    | currentEntry = newCurrentEntry
-                    , running = True
+                    | description = ""
+                    , duration = 0
+                    , startDate = Nothing
+                    , storedEntries = newDateRangeEntry :: model.storedEntries
                   }
                 , Cmd.none
                 )
 
-        StopTimer endDate ->
-            let
-                newStoredEntries =
-                    Entry
-                        model.currentEntry.description
-                        model.currentEntry.startDate
-                        (Just endDate)
-                        :: model.storedEntries
-            in
-                ( Model
-                    False
-                    (Entry "" Nothing Nothing)
-                    newStoredEntries
-                , Cmd.none
-                )
-
-        Tick currentTime ->
-            let
-                newCurrentEntry =
-                    Entry
-                        model.currentEntry.description
-                        model.currentEntry.startDate
-                        (Just (Date.fromTime currentTime))
-            in
-                ( { model | currentEntry = newCurrentEntry }, Cmd.none )
-
-
-dateDiff : Maybe Date -> Maybe Date -> Time
-dateDiff startDate endDate =
-    case ( startDate, endDate ) of
-        ( Just startDate_, Just endDate_ ) ->
-            Date.toTime endDate_ - Date.toTime startDate_
-
-        ( _, _ ) ->
-            0
+        Tick _ ->
+            ( { model | duration = model.duration + second }, Cmd.none )
 
 
 
@@ -132,10 +95,12 @@ dateDiff startDate endDate =
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    if model.running then
-        Time.every second Tick
-    else
-        Sub.none
+    case model.startDate of
+        Just _ ->
+            Time.every second Tick
+
+        Nothing ->
+            Sub.none
 
 
 
@@ -148,7 +113,7 @@ view model =
         [ Html.form [ onSubmit ToggleTimer ]
             [ (input
                 [ placeholder "Enter a description"
-                , value model.currentEntry.description
+                , value model.description
                 , onInput SetDescription
                 ]
                 []
@@ -157,12 +122,7 @@ view model =
             ]
         , h4 []
             [ text
-                ("Time Elapsed: "
-                    ++ (viewTimeElapsed
-                            model.currentEntry.startDate
-                            model.currentEntry.endDate
-                       )
-                )
+                ("Time Elapsed: " ++ viewTimeElapsed model.duration)
             ]
         , viewEntries model
         ]
@@ -174,17 +134,13 @@ type TimeUnit
     | Second
 
 
-viewTimeElapsed : Maybe Date -> Maybe Date -> String
-viewTimeElapsed startDate endDate =
-    let
-        time =
-            dateDiff startDate endDate
-    in
-        viewTimeUnit time Hour
-            ++ ":"
-            ++ viewTimeUnit time Minute
-            ++ ":"
-            ++ viewTimeUnit time Second
+viewTimeElapsed : Time -> String
+viewTimeElapsed time =
+    viewTimeUnit time Hour
+        ++ ":"
+        ++ viewTimeUnit time Minute
+        ++ ":"
+        ++ viewTimeUnit time Second
 
 
 viewTimeUnit : Time -> TimeUnit -> String
@@ -212,10 +168,12 @@ viewButton : Model -> Html Msg
 viewButton model =
     let
         buttonText =
-            if model.running then
-                "Stop"
-            else
-                "Start"
+            case model.startDate of
+                Just _ ->
+                    "Stop"
+
+                Nothing ->
+                    "Start"
     in
         input [ type_ "submit", value buttonText ] []
 
@@ -235,8 +193,8 @@ viewEntry : Entry -> Html Msg
 viewEntry entry =
     li []
         [ text
-            ((viewTimeElapsed entry.startDate entry.endDate)
+            ((viewTimeElapsed (entryDuration entry))
                 ++ " - "
-                ++ entry.description
+                ++ entryDescription entry
             )
         ]
