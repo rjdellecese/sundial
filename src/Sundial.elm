@@ -67,26 +67,29 @@ update msg model =
             ( { model | startDate = Just startDate_ }, Cmd.none )
 
         StopTimer startDate endDate ->
-            let
-                newDateRangeEntry =
-                    DateRangeEntry
-                        (DateRangeEntryInfo
-                            model.description
-                            startDate
-                            endDate
-                        )
-            in
-                ( { model
-                    | description = ""
-                    , duration = 0
-                    , startDate = Nothing
-                    , storedEntries = newDateRangeEntry :: model.storedEntries
-                  }
-                , Cmd.none
-                )
+            ( storeEntry model startDate endDate, Cmd.none )
 
         Tick _ ->
             ( { model | duration = model.duration + second }, Cmd.none )
+
+
+storeEntry : Model -> Date -> Date -> Model
+storeEntry model startDate endDate =
+    let
+        newDateRangeEntry =
+            DateRangeEntry
+                (DateRangeEntryInfo
+                    model.description
+                    startDate
+                    endDate
+                )
+    in
+        { model
+            | description = ""
+            , duration = 0
+            , startDate = Nothing
+            , storedEntries = newDateRangeEntry :: model.storedEntries
+        }
 
 
 
@@ -118,13 +121,13 @@ view model =
                 ]
                 []
               )
-            , viewButton model
+            , viewButton model.startDate
             ]
         , h4 []
             [ text
                 ("Time Elapsed: " ++ viewTimeElapsed model.duration)
             ]
-        , viewEntries model
+        , viewEntries model.storedEntries
         ]
 
 
@@ -164,11 +167,11 @@ maybePad time =
         toString time
 
 
-viewButton : Model -> Html Msg
-viewButton model =
+viewButton : Maybe Date -> Html Msg
+viewButton startDate =
     let
         buttonText =
-            case model.startDate of
+            case startDate of
                 Just _ ->
                     "Stop"
 
@@ -178,15 +181,9 @@ viewButton model =
         input [ type_ "submit", value buttonText ] []
 
 
-
-{- Make this:
-   viewEntries : List Entry -> Html Msg
--}
-
-
-viewEntries : Model -> Html Msg
-viewEntries model =
-    div [] [ ol [] (List.map viewEntry model.storedEntries) ]
+viewEntries : List Entry -> Html Msg
+viewEntries entryList =
+    div [] [ ol [] (List.map viewEntry entryList) ]
 
 
 viewEntry : Entry -> Html Msg

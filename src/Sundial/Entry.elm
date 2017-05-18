@@ -1,7 +1,6 @@
 module Sundial.Entry
     exposing
         ( Entry(..)
-        , EntryList
         , DateRangeEntryInfo
         , DurationDateEntryInfo
         , entryDuration
